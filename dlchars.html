@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual LLaMa Chat Interface (Dark+Stream+Timestamps+Chars)</title>
+    <style>
+        /* Dark Theme */
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #e0e0e0;
+            --primary-color: #4CAF50; /* Green */
+            --secondary-color: #2196F3; /* Blue */
+            --error-color: #f44336; /* Red */
+            --container-bg: #2a2a2a;
+            --input-bg: #333333;
+            --border-color: #444444;
+            --hover-primary: #45a049;
+            --hover-secondary: #0b7dda;
+            --hover-error: #d32f2f;
+            --disabled-color: #555555;
+            --user-bubble-bg: #0d47a1; /* Darker Blue */
+            --llm1-bubble-bg: #33691e; /* Darker Green */
+            --llm2-bubble-bg: #1b5e20; /* Even Darker Green */
+            --scrollbar-thumb: #555;
+            --scrollbar-track: #333;
+            --thinking-color: #aaaaaa;
+            --metadata-color: #aaaaaa; /* Color for timestamps/TPS */
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+        h1, h2, h3 {
+            color: var(--text-color);
+        }
+        .settings {
+            background-color: var(--container-bg);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--border-color);
+        }
+        .settings-basic {
+            flex: 1;
+            flex-basis: 75%; /* Give more space */
+        }
+        .settings-row {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap; /* Allow wrapping if needed */
+        }
+        label {
+            display: inline-block;
+            width: 120px;
+            font-weight: bold;
+            color: var(--text-color);
+        }
+        input, select, textarea {
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            width: 200px;
+            background-color: var(--input-bg);
+            color: var(--text-color);
+        }
+        input[type="number"] {
+            width: 60px;
+        }
+        input::placeholder, textarea::placeholder {
+            color: #888;
+        }
+
+        /* Character Card Button/Span Styles */
+        .settings-row .char-btn {
+            margin-left: 15px;
+            padding: 4px 10px; /* Smaller padding */
+            font-size: 12px;   /* Smaller font */
+            border-radius: 15px;
+            background-color: var(--secondary-color);
+            min-width: 80px; /* Ensure minimum width */
+            cursor: pointer;
+        }
+        .settings-row .char-btn:hover {
+            background-color: var(--hover-secondary);
+        }
+        .settings-row .clear-btn {
+            background-color: var(--error-color);
+            min-width: 25px; /* Smaller clear button */
+            padding: 4px 6px;
+            margin-left: 5px;
+            line-height: 1;
+            font-weight: bold;
+        }
+        .settings-row .clear-btn:hover {
+            background-color: var(--hover-error);
+        }
+        .settings-row .char-name {
+            margin-left: 8px;
+            font-style: italic;
+            font-size: 13px;
+            color: var(--metadata-color);
+            display: inline-block;
+            max-width: 100px; /* Limit width */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: middle; /* Align with buttons */
+        }
+
+
+        .chat-container {
+            height: 500px;
+            overflow-y: auto;
+            background-color: var(--container-bg);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            border: 1px solid var(--border-color);
+            scrollbar-width: thin; /* Firefox */
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); /* Firefox */
+        }
+        /* Webkit Scrollbar */
+        .chat-container::-webkit-scrollbar { width: 8px; }
+        .chat-container::-webkit-scrollbar-track { background: var(--scrollbar-track); border-radius: 10px; }
+        .chat-container::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb); border-radius: 10px; border: 2px solid var(--scrollbar-track); }
+
+        .message {
+            margin-bottom: 15px;
+            max-width: 85%;
+            clear: both;
+            display: flex;
+            flex-direction: column;
+        }
+        .message.user { align-items: flex-end; }
+        .message.llm1, .message.llm2 { align-items: flex-start; }
+
+        .message-header { display: flex; align-items: center; margin-bottom: 3px; font-size: 13px; }
+         .message.user .message-header { flex-direction: row-reverse; }
+
+        .sender { font-weight: bold; color: #ccc; margin: 0 8px; }
+        .metadata { color: var(--metadata-color); font-size: 11px; }
+
+        .bubble {
+            padding: 10px 15px;
+            border-radius: 18px;
+            display: inline-block;
+            max-width: 100%;
+            word-wrap: break-word;
+            color: #ffffff;
+            position: relative;
+        }
+         .user .bubble { background-color: var(--user-bubble-bg); border-bottom-right-radius: 4px; align-self: flex-end; }
+         .llm1 .bubble { background-color: var(--llm1-bubble-bg); border-bottom-left-radius: 4px; align-self: flex-start; }
+         .llm2 .bubble { background-color: var(--llm2-bubble-bg); border-bottom-left-radius: 4px; align-self: flex-start; }
+
+        .input-area { margin-top: 20px; display: flex; gap: 10px; }
+        #user-input { flex: 1; padding: 12px; border: 1px solid var(--border-color); border-radius: 20px; font-size: 16px; background-color: var(--input-bg); color: var(--text-color); }
+        button { padding: 10px 20px; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 16px; transition: background-color 0.2s ease; }
+        #send-button { background-color: var(--primary-color); }
+        #send-button:hover { background-color: var(--hover-primary); }
+        #stop-conversation { background-color: var(--error-color); }
+        #stop-conversation:hover { background-color: var(--hover-error); }
+        #config-button { background-color: var(--secondary-color); }
+        #config-button:hover { background-color: var(--hover-secondary); }
+        #save-config { background-color: var(--primary-color); }
+        #save-config:hover { background-color: var(--hover-primary); }
+
+        button:disabled { background-color: var(--disabled-color); cursor: not-allowed; }
+        .thinking { font-style: italic; color: var(--thinking-color); }
+        .controls { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+
+        /* Modal styles */
+        .modal { display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7); }
+        .modal-content { background-color: var(--container-bg); margin: 5% auto; padding: 20px; border-radius: 10px; width: 80%; max-width: 600px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid var(--border-color); color: var(--text-color); }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1; }
+        .close:hover { color: var(--text-color); }
+        .config-section { margin-bottom: 20px; }
+        .config-section h3 { margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 5px; }
+        .config-row { display: flex; margin-bottom: 10px; align-items: center; }
+        .config-row label { width: 150px; }
+        .config-row input, .config-row select, .config-row textarea { flex: 1; background-color: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color); }
+        .config-row textarea { width: calc(100% - 160px); min-height: 80px; resize: vertical; }
+        .config-actions { text-align: right; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Dual LLaMa Chat Interface (Dark+Stream+Timestamps+Chars)</h1>
+
+    <div class="settings">
+        <div class="settings-basic">
+            <!-- LLM 1 Settings Row -->
+            <div class="settings-row">
+                <label for="llm1-name">Bot 1 Name:</label>
+                <input type="text" id="llm1-name" value="LLaMa-1">
+                <label for="llm1-port" style="margin-left: 20px;">Port:</label>
+                <input type="text" id="llm1-port" value="8080" style="width: 80px;">
+                <!-- LLM 1 Character Card Elements -->
+                <input type="file" id="llm1-char-file" accept=".json" style="display: none;">
+                <button id="llm1-load-char-btn" class="char-btn">Load Char 1</button>
+                <span id="llm1-char-name" class="char-name">None</span>
+                <button id="llm1-clear-char-btn" class="char-btn clear-btn" title="Clear Bot 1 Character">&times;</button>
+            </div>
+            <!-- LLM 2 Settings Row -->
+            <div class="settings-row">
+                <label for="llm2-name">Bot 2 Name:</label>
+                <input type="text" id="llm2-name" value="LLaMa-2">
+                <label for="llm2-port" style="margin-left: 20px;">Port:</label>
+                <input type="text" id="llm2-port" value="8000" style="width: 80px;">
+                 <!-- LLM 2 Character Card Elements -->
+                <input type="file" id="llm2-char-file" accept=".json" style="display: none;">
+                <button id="llm2-load-char-btn" class="char-btn">Load Char 2</button>
+                <span id="llm2-char-name" class="char-name">None</span>
+                 <button id="llm2-clear-char-btn" class="char-btn clear-btn" title="Clear Bot 2 Character">&times;</button>
+            </div>
+            <!-- Auto-turns Row -->
+            <div class="settings-row">
+                <label for="auto-turns">Auto-turns:</label>
+                <input type="number" id="auto-turns" value="3" min="0" max="10">
+                <span style="margin-left: 10px;">(Exchanges between bots after user message)</span>
+            </div>
+        </div>
+        <div>
+            <button id="config-button">Advanced Settings</button>
+        </div>
+    </div>
+
+    <div class="chat-container" id="chat-container">
+        <!-- Chat messages will appear here -->
+    </div>
+
+    <div class="input-area">
+        <input type="text" id="user-input" placeholder="Type your message here...">
+        <button id="send-button">Send</button>
+    </div>
+
+    <div class="controls">
+        <button id="stop-conversation" disabled>Stop Bot Conversation</button>
+    </div>
+
+    <!-- Configuration Modal -->
+    <div id="config-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Advanced Configuration</h2>
+            <!-- Modal sections remain the same -->
+             <div class="config-section">
+                <h3>Bot 1 Settings</h3>
+                 <div class="config-row"><label for="llm1-temperature">Temperature:</label><input type="number" id="llm1-temperature" value="0.7" min="0" max="2" step="0.1"></div>
+                 <div class="config-row"><label for="llm1-max-tokens">Max Tokens:</label><input type="number" id="llm1-max-tokens" value="1024" min="50" max="8192"></div>
+                 <div class="config-row"><label for="llm1-top-p">Top P:</label><input type="number" id="llm1-top-p" value="0.9" min="0" max="1" step="0.05"></div>
+                 <div class="config-row"><label for="llm1-frequency-penalty">Frequency Penalty:</label><input type="number" id="llm1-frequency-penalty" value="0" min="-2" max="2" step="0.1"></div>
+                 <div class="config-row"><label for="llm1-presence-penalty">Presence Penalty:</label><input type="number" id="llm1-presence-penalty" value="0" min="-2" max="2" step="0.1"></div>
+            </div>
+             <div class="config-section">
+                <h3>Bot 2 Settings</h3>
+                 <div class="config-row"><label for="llm2-temperature">Temperature:</label><input type="number" id="llm2-temperature" value="0.7" min="0" max="2" step="0.1"></div>
+                 <div class="config-row"><label for="llm2-max-tokens">Max Tokens:</label><input type="number" id="llm2-max-tokens" value="1024" min="50" max="8192"></div>
+                 <div class="config-row"><label for="llm2-top-p">Top P:</label><input type="number" id="llm2-top-p" value="0.9" min="0" max="1" step="0.05"></div>
+                 <div class="config-row"><label for="llm2-frequency-penalty">Frequency Penalty:</label><input type="number" id="llm2-frequency-penalty" value="0" min="-2" max="2" step="0.1"></div>
+                 <div class="config-row"><label for="llm2-presence-penalty">Presence Penalty:</label><input type="number" id="llm2-presence-penalty" value="0" min="-2" max="2" step="0.1"></div>
+            </div>
+            <div class="config-section">
+                <h3>Context Settings</h3>
+                <div class="config-row"><label for="context-type">Context Type:</label><select id="context-type"><option value="full">Full History</option><option value="window">Sliding Window</option></select></div>
+                <div class="config-row"><label for="context-window">Context Window:</label><input type="number" id="context-window" value="10" min="1" max="50"><span style="margin-left: 10px;">(messages)</span></div>
+                <div class="config-row"><label for="system-prompt">System Prompt:</label><textarea id="system-prompt" rows="4">You are a helpful assistant engaging in a three-way conversation.</textarea></div>
+            </div>
+            <div class="config-actions"><button id="save-config">Save Settings</button></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- DOM Element References ---
+            const chatContainer = document.getElementById('chat-container');
+            const userInput = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            const stopButton = document.getElementById('stop-conversation');
+            const configButton = document.getElementById('config-button');
+            const configModal = document.getElementById('config-modal');
+            const closeModalBtn = configModal.querySelector('.close');
+            const saveConfigBtn = document.getElementById('save-config');
+            const llm1NameInput = document.getElementById('llm1-name');
+            const llm2NameInput = document.getElementById('llm2-name');
+            const llm1PortInput = document.getElementById('llm1-port');
+            const llm2PortInput = document.getElementById('llm2-port');
+            const autoTurnsInput = document.getElementById('auto-turns');
+            // Character Card Elements
+            const llm1CharFileInput = document.getElementById('llm1-char-file');
+            const llm1LoadCharBtn = document.getElementById('llm1-load-char-btn');
+            const llm1CharNameSpan = document.getElementById('llm1-char-name');
+            const llm1ClearCharBtn = document.getElementById('llm1-clear-char-btn');
+            const llm2CharFileInput = document.getElementById('llm2-char-file');
+            const llm2LoadCharBtn = document.getElementById('llm2-load-char-btn');
+            const llm2CharNameSpan = document.getElementById('llm2-char-name');
+            const llm2ClearCharBtn = document.getElementById('llm2-clear-char-btn');
+
+
+            // --- State variables ---
+            let isBotConversationActive = false;
+            let currentAbortController = null;
+            let chatHistory = [];
+            let messageCounter = 0;
+            let llm1CharacterData = null; // Stores parsed character data for LLM 1
+            let llm2CharacterData = null; // Stores parsed character data for LLM 2
+
+            // --- Config objects ---
+            let llm1Config = { temperature: 0.7, max_tokens: 1024, top_p: 0.9, frequency_penalty: 0, presence_penalty: 0 };
+            let llm2Config = { temperature: 0.7, max_tokens: 1024, top_p: 0.9, frequency_penalty: 0, presence_penalty: 0 };
+            let contextConfig = { type: 'full', window: 10, systemPrompt: 'You are a helpful assistant engaging in a three-way conversation.' };
+
+            // --- Function Definitions ---
+
+            // Load config into modal
+            function loadCurrentConfig() {
+                document.getElementById('llm1-temperature').value = llm1Config.temperature;
+                document.getElementById('llm1-max-tokens').value = llm1Config.max_tokens;
+                document.getElementById('llm1-top-p').value = llm1Config.top_p;
+                document.getElementById('llm1-frequency-penalty').value = llm1Config.frequency_penalty;
+                document.getElementById('llm1-presence-penalty').value = llm1Config.presence_penalty;
+                document.getElementById('llm2-temperature').value = llm2Config.temperature;
+                document.getElementById('llm2-max-tokens').value = llm2Config.max_tokens;
+                document.getElementById('llm2-top-p').value = llm2Config.top_p;
+                document.getElementById('llm2-frequency-penalty').value = llm2Config.frequency_penalty;
+                document.getElementById('llm2-presence-penalty').value = llm2Config.presence_penalty;
+                document.getElementById('context-type').value = contextConfig.type;
+                document.getElementById('context-window').value = contextConfig.window;
+                document.getElementById('system-prompt').value = contextConfig.systemPrompt;
+            }
+
+            // Save config from modal
+            function saveConfiguration() {
+                llm1Config.temperature = parseFloat(document.getElementById('llm1-temperature').value);
+                llm1Config.max_tokens = parseInt(document.getElementById('llm1-max-tokens').value);
+                llm1Config.top_p = parseFloat(document.getElementById('llm1-top-p').value);
+                llm1Config.frequency_penalty = parseFloat(document.getElementById('llm1-frequency-penalty').value);
+                llm1Config.presence_penalty = parseFloat(document.getElementById('llm1-presence-penalty').value);
+                llm2Config.temperature = parseFloat(document.getElementById('llm2-temperature').value);
+                llm2Config.max_tokens = parseInt(document.getElementById('llm2-max-tokens').value);
+                llm2Config.top_p = parseFloat(document.getElementById('llm2-top-p').value);
+                llm2Config.frequency_penalty = parseFloat(document.getElementById('llm2-frequency-penalty').value);
+                llm2Config.presence_penalty = parseFloat(document.getElementById('llm2-presence-penalty').value);
+                contextConfig.type = document.getElementById('context-type').value;
+                contextConfig.window = parseInt(document.getElementById('context-window').value);
+                contextConfig.systemPrompt = document.getElementById('system-prompt').value;
+                configModal.style.display = "none";
+                console.log("Configuration saved:", { llm1Config, llm2Config, contextConfig });
+            }
+
+            // Helper: Format time
+            function formatTime(date) {
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            }
+
+            // Helper: Add message structure
+            function addMessageStructure(sender, senderType, initialContent = '') {
+                messageCounter++;
+                const messageId = `msg-${messageCounter}`;
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${senderType}`;
+                messageDiv.id = messageId;
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'message-header';
+                const senderDiv = document.createElement('div');
+                senderDiv.className = 'sender';
+                senderDiv.textContent = sender;
+                const metadataSpan = document.createElement('span');
+                metadataSpan.className = 'metadata';
+                metadataSpan.textContent = formatTime(new Date());
+                if (senderType === 'user') {
+                    headerDiv.appendChild(metadataSpan); headerDiv.appendChild(senderDiv);
+                } else {
+                    headerDiv.appendChild(senderDiv); headerDiv.appendChild(metadataSpan);
+                }
+                const bubbleDiv = document.createElement('div');
+                bubbleDiv.className = 'bubble';
+                if (initialContent === 'Thinking...') bubbleDiv.classList.add('thinking');
+                bubbleDiv.textContent = initialContent;
+                messageDiv.appendChild(headerDiv); messageDiv.appendChild(bubbleDiv);
+                chatContainer.appendChild(messageDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+                return messageDiv;
+            }
+
+            // Helper: Update full message content
+            function updateMessageContent(messageElement, content) {
+                const bubble = messageElement.querySelector('.bubble');
+                if (bubble) { bubble.textContent = content; bubble.classList.remove('thinking'); }
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+
+            // Helper: Append streaming token
+            function appendMessageContent(messageElement, token) {
+                const bubble = messageElement.querySelector('.bubble');
+                if (bubble) {
+                    if (bubble.classList.contains('thinking')) { bubble.textContent = ''; bubble.classList.remove('thinking'); }
+                    bubble.textContent += token;
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+            }
+
+            // Helper: Append TPS info
+            function appendTpsInfo(messageElement, tpsInfo) {
+                if (!tpsInfo || typeof tpsInfo.tps !== 'number' || !isFinite(tpsInfo.tps)) return;
+                const metadataSpan = messageElement.querySelector('.metadata');
+                if (metadataSpan && !metadataSpan.textContent.includes('TPS')) {
+                    metadataSpan.textContent += ` | ${tpsInfo.tps.toFixed(1)} TPS`;
+                    if (tpsInfo.tokenCount > 0) {
+                        metadataSpan.title = `${tpsInfo.tokenCount} tokens in ${tpsInfo.duration.toFixed(2)}s`;
+                    }
+                }
+            }
+
+            // Helper: Prepare context string
+            function prepareContext(history) {
+                let contextMessages;
+                if (contextConfig.type === 'full') contextMessages = history;
+                else if (contextConfig.type === 'window') contextMessages = history.slice(-contextConfig.window);
+                else contextMessages = history;
+                return contextMessages.map(msg => `${msg.role}: ${msg.content}`).join('\n');
+            }
+
+            // Helper: Set UI control states
+            function setControlsState(isGenerating) {
+                sendButton.disabled = isGenerating;
+                userInput.disabled = isGenerating;
+                stopButton.disabled = !isGenerating;
+                configButton.disabled = isGenerating;
+                llm1NameInput.disabled = isGenerating; llm1PortInput.disabled = isGenerating;
+                llm2NameInput.disabled = isGenerating; llm2PortInput.disabled = isGenerating;
+                autoTurnsInput.disabled = isGenerating;
+                // Disable character buttons during generation
+                llm1LoadCharBtn.disabled = isGenerating; llm1ClearCharBtn.disabled = isGenerating;
+                llm2LoadCharBtn.disabled = isGenerating; llm2ClearCharBtn.disabled = isGenerating;
+            }
+
+            // Character Card: Handle file selection
+             function handleCharacterFile(file, llmIndex) {
+                if (!file) return;
+                if (!file.type || file.type !== 'application/json') {
+                    alert('Invalid file type. Please select a JSON file.');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const parsedData = JSON.parse(e.target.result);
+                        if (typeof parsedData === 'object' && parsedData !== null && parsedData.Name) {
+                            if (llmIndex === 1) {
+                                llm1CharacterData = parsedData;
+                                llm1CharNameSpan.textContent = parsedData.Name;
+                                llm1CharNameSpan.title = `Loaded: ${parsedData.Name}`;
+                                console.log("LLM 1 Character Loaded:", llm1CharacterData);
+                            } else {
+                                llm2CharacterData = parsedData;
+                                llm2CharNameSpan.textContent = parsedData.Name;
+                                llm2CharNameSpan.title = `Loaded: ${parsedData.Name}`;
+                                console.log("LLM 2 Character Loaded:", llm2CharacterData);
+                            }
+                        } else {
+                            alert('Invalid JSON structure. Character card must be an object with at least a "Name" property.');
+                            if (llmIndex === 1) clearCharacter(1); else clearCharacter(2);
+                        }
+                    } catch (error) {
+                        console.error("Error parsing JSON character card:", error);
+                        alert(`Error parsing JSON: ${error.message}`);
+                         if (llmIndex === 1) clearCharacter(1); else clearCharacter(2);
+                    }
+                };
+                reader.onerror = (e) => {
+                    console.error("Error reading file:", e);
+                    alert('Error reading the selected file.');
+                };
+                reader.readAsText(file);
+            }
+
+            // Character Card: Clear data
+            function clearCharacter(llmIndex) {
+                if (llmIndex === 1) {
+                    llm1CharacterData = null;
+                    llm1CharNameSpan.textContent = "None";
+                    llm1CharNameSpan.title = "";
+                    llm1CharFileInput.value = null; // Reset file input state
+                    console.log("LLM 1 Character Cleared");
+                } else {
+                    llm2CharacterData = null;
+                    llm2CharNameSpan.textContent = "None";
+                    llm2CharNameSpan.title = "";
+                    llm2CharFileInput.value = null; // Reset file input state
+                    console.log("LLM 2 Character Cleared");
+                }
+            }
+
+            // Character Card: Format for prompt
+            function formatCharacterForPrompt(charData) {
+                if (!charData) return "";
+                let persona = `--- Your Persona ---\n`;
+                persona += `Name: ${charData.Name || 'N/A'}\n`;
+                if (charData.age) persona += `Age: ${charData.age}\n`;
+                if (charData.gender) persona += `Gender: ${charData.gender}\n`;
+                if (charData.appearance) persona += `Appearance: ${charData.appearance}\n`;
+                if (charData.disposition) persona += `Disposition: ${charData.disposition}\n`;
+                if (charData.description) persona += `Description: ${charData.description}\n`;
+                persona += `--- End Persona ---\n\n`;
+                persona += `You MUST adopt this persona when responding.\n\n`;
+                return persona;
+            }
+
+
+            // Core: Query LLM with Streaming & TPS
+            async function queryLLMStream(port, prompt, config, messageElement) {
+                currentAbortController = new AbortController();
+                let accumulatedContent = "";
+                let predictedTokenCount = 0;
+                let tpsInfo = null;
+                const startTime = performance.now();
+
+                try {
+                    const response = await fetch(`http://localhost:${port}/completion`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', },
+                        body: JSON.stringify({
+                            prompt: prompt,
+                            temperature: config.temperature,
+                            n_predict: config.max_tokens,
+                            top_p: config.top_p,
+                            frequency_penalty: config.frequency_penalty,
+                            presence_penalty: config.presence_penalty,
+                            stream: true
+                        }),
+                        signal: currentAbortController.signal
+                    });
+
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    if (!response.body) throw new Error('Response body is null');
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let partialLine = '';
+
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = (partialLine + chunk).split('\n');
+                        partialLine = lines.pop() || '';
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const jsonData = JSON.parse(line.substring(6));
+                                    if (jsonData.content) {
+                                        accumulatedContent += jsonData.content;
+                                        appendMessageContent(messageElement, jsonData.content);
+                                    }
+                                    if (jsonData.stop === true) {
+                                        if (jsonData.timings && typeof jsonData.timings.predicted_n === 'number') {
+                                            predictedTokenCount = jsonData.timings.predicted_n;
+                                        }
+                                    }
+                                } catch (e) { console.warn('Failed to parse JSON chunk:', line, e); }
+                            }
+                        }
+                    }
+                } catch (error) {
+                     if (error.name === 'AbortError') {
+                        accumulatedContent += " [Stopped]";
+                     } else {
+                         console.error('Error querying LLM:', error);
+                         accumulatedContent = `Error: ${error.message}. Check LLaMa server on port ${port}.`;
+                     }
+                     updateMessageContent(messageElement, accumulatedContent || "[Error]");
+                } finally {
+                     currentAbortController = null;
+                     const endTime = performance.now();
+                     const durationSec = (endTime - startTime) / 1000;
+                     if (predictedTokenCount > 0 && durationSec > 0.01) {
+                         const tps = predictedTokenCount / durationSec;
+                         tpsInfo = { tokenCount: predictedTokenCount, duration: durationSec, tps: tps };
+                     } else if (predictedTokenCount > 0) {
+                         tpsInfo = { tokenCount: predictedTokenCount, duration: durationSec, tps: Infinity };
+                     }
+                }
+                updateMessageContent(messageElement, accumulatedContent || "[Empty Response]");
+                return { content: accumulatedContent, tpsInfo: tpsInfo };
+            }
+
+            // Core: Handle a single bot's turn (with Character)
+            async function botConversationTurn(currentSpeaker, otherSpeaker, currentPort, otherPort, currentConfig, turnsLeft) {
+                if (!isBotConversationActive) return;
+
+                const messageElement = addMessageStructure(currentSpeaker, currentSpeaker === llm1NameInput.value ? 'llm1' : 'llm2', 'Thinking...');
+
+                // Determine character data and format persona
+                let characterData = (currentSpeaker === llm1NameInput.value) ? llm1CharacterData : llm2CharacterData;
+                const personaDescription = formatCharacterForPrompt(characterData);
+
+                const context = prepareContext(chatHistory);
+
+                // Construct the prompt with persona
+                const prompt = `${contextConfig.systemPrompt}\n\n` +
+                               `${personaDescription}` +
+                               `The following is a conversation between a user, ${llm1NameInput.value}, and ${llm2NameInput.value}.\n` +
+                               `Engage in the conversation based on the history and your persona. Respond concisely and relevantly as ${currentSpeaker}.\n\n` +
+                               `--- Conversation History ---\n` +
+                               `${context}\n` +
+                               `--- End History ---\n\n` +
+                               `${currentSpeaker}:`;
+
+                console.log(`Prompt for ${currentSpeaker} (persona included: ${!!characterData})`); // Simplified log
+
+                // Query LLM
+                const result = await queryLLMStream(currentPort, prompt, currentConfig, messageElement);
+                if (messageElement && result.tpsInfo) {
+                    appendTpsInfo(messageElement, result.tpsInfo);
+                }
+
+                if (!isBotConversationActive) return; // Check again after await
+
+                // Add valid responses to history
+                if (result.content && !result.content.startsWith("Error:") && result.content !== "[Stopped]" && result.content !== "[Empty Response]") {
+                    chatHistory.push({ role: currentSpeaker, content: result.content });
+                }
+
+                // Continue or end
+                if (turnsLeft > 0 && isBotConversationActive) {
+                    setTimeout(() => {
+                        if (!isBotConversationActive) return;
+                        const nextConfig = currentSpeaker === llm1NameInput.value ? llm2Config : llm1Config;
+                        botConversationTurn(otherSpeaker, currentSpeaker, otherPort, currentPort, nextConfig, turnsLeft - 1);
+                    }, 500);
+                } else {
+                    endBotConversation();
+                }
+            }
+
+            // Core: Start the bot conversation sequence
+            function startBotConversation() {
+                if (isBotConversationActive) return;
+                isBotConversationActive = true;
+                setControlsState(true);
+                const llm1Name = llm1NameInput.value || 'LLaMa-1';
+                const llm2Name = llm2NameInput.value || 'LLaMa-2';
+                const llm1Port = llm1PortInput.value || '8080';
+                const llm2Port = llm2PortInput.value || '8000';
+                const totalTurns = parseInt(autoTurnsInput.value) * 2;
+                if (totalTurns <= 0) { endBotConversation(); return; }
+                setTimeout(() => {
+                    if (!isBotConversationActive) return;
+                    botConversationTurn(llm1Name, llm2Name, llm1Port, llm2Port, llm1Config, totalTurns - 1);
+                }, 100);
+            }
+
+            // Core: Stop the bot conversation
+            function endBotConversation(forceStop = false) {
+                if (!isBotConversationActive && !forceStop) return;
+                isBotConversationActive = false;
+                if (currentAbortController) { currentAbortController.abort(); currentAbortController = null; }
+                setControlsState(false);
+                console.log("Bot conversation stopped.");
+            }
+
+            // Core: Handle user sending message
+            async function handleSendMessage() {
+                const message = userInput.value.trim();
+                if (message === '' || isBotConversationActive) return;
+                endBotConversation(true);
+                userInput.value = '';
+                addMessageStructure('You', 'user', message);
+                chatHistory.push({ role: "user", content: message });
+                startBotConversation();
+            }
+
+            // --- Event Listener Assignments ---
+            sendButton.addEventListener('click', handleSendMessage);
+            userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } });
+            stopButton.addEventListener('click', () => { endBotConversation(true); });
+            configButton.onclick = () => { loadCurrentConfig(); configModal.style.display = "block"; };
+            closeModalBtn.onclick = () => { configModal.style.display = "none"; };
+            saveConfigBtn.onclick = () => { saveConfiguration(); };
+            window.onclick = (event) => { if (event.target == configModal) configModal.style.display = "none"; };
+
+            // Character Card Listeners
+            llm1LoadCharBtn.addEventListener('click', () => { llm1CharFileInput.click(); });
+            llm1CharFileInput.addEventListener('change', (event) => { handleCharacterFile(event.target.files[0], 1); event.target.value = null; });
+            llm1ClearCharBtn.addEventListener('click', () => { clearCharacter(1); });
+            llm2LoadCharBtn.addEventListener('click', () => { llm2CharFileInput.click(); });
+            llm2CharFileInput.addEventListener('change', (event) => { handleCharacterFile(event.target.files[0], 2); event.target.value = null; });
+            llm2ClearCharBtn.addEventListener('click', () => { clearCharacter(2); });
+
+            // --- Initial Setup ---
+            setControlsState(false);
+            clearCharacter(1); // Ensure initial state
+            clearCharacter(2); // Ensure initial state
+
+        }); // End DOMContentLoaded
+    </script>
+</body>
+</html>
